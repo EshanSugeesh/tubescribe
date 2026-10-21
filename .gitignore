@@ -1,0 +1,17 @@
+# Environment variables & secrets
+.env
+
+# Python virtual environments
+venv/
+env/
+ENV/
+tubetonotion-backend/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS generated files
+Thumbs.db
+desktop.ini

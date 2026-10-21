@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TubeScribe — YouTube Video & Playlist to AI Notes</title>
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">🚀</span>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight text-white">TubeScribe AI</h1>
+          <p class="text-xs text-slate-400">YouTube Video & Playlist to Structured Study Notes</p>
+        </div>
+      </div>
+      <a href="/docs" target="_blank" class="text-xs text-indigo-400 hover:underline">Swagger API Docs ↗</a>
+    </div>
+  </header>
+
+  <!-- Main Grid -->
+  <main class="max-w-7xl mx-auto w-full px-6 py-8 grid grid-cols-1 lg:grid-cols-4 gap-8 flex-1">
+    <!-- Left Sidebar: Input + Saved Library -->
+    <div class="lg:col-span-1 space-y-6">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+        <h2 class="font-semibold text-sm text-slate-200 uppercase tracking-wider">New Study Guide</h2>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">YouTube Video or Playlist Link</label>
+          <input id="urlInput" type="text" placeholder="https://www.youtube.com/watch?v=... or playlist?list=..."
+            class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Max Videos (if Playlist)</label>
+          <input id="maxVideos" type="number" value="8" min="1" max="25"
+            class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm" />
+        </div>
+        <button id="generateBtn" onclick="generateNotes()"
+          class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 font-medium rounded-lg text-sm transition flex items-center justify-center gap-2">
+          <span>✨ Generate Notes</span>
+        </button>
+        <p id="statusMsg" class="text-xs text-slate-400 hidden"></p>
+      </div>
+
+      <!-- History List -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-sm text-slate-200 uppercase tracking-wider">Saved Library</h2>
+          <button onclick="loadHistory()" class="text-xs text-indigo-400 hover:underline">Refresh</button>
+        </div>
+        <div id="historyList" class="space-y-2 max-h-96 overflow-y-auto text-sm">
+          <p class="text-xs text-slate-500">Loading history...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Area: Rendered Notes & Export Actions -->
+    <div class="lg:col-span-3 flex flex-col">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 flex-1 flex flex-col">
+        <!-- Action Bar -->
+        <div id="actionBar" class="hidden pb-4 mb-6 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span id="badgeType" class="text-xs uppercase px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-medium">VIDEO</span>
+            <h2 id="noteTitle" class="text-lg font-bold text-white mt-1"></h2>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="copyMarkdown()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-medium">
+              📋 Copy Markdown (Notion/Docs)
+            </button>
+            <button onclick="downloadMarkdown()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-medium">
+              ⬇️ Download .md
+            </button>
+          </div>
+        </div>
+
+        <!-- Notes Container -->
+        <div id="notesOutput" class="prose prose-invert max-w-none flex-1">
+          <div class="text-center py-24 text-slate-500">
+            <p class="text-4xl mb-3">📝</p>
+            <p class="text-base font-medium text-slate-300">Paste any YouTube Video or Playlist URL on the left</p>
+            <p class="text-xs mt-1">Your structured Markdown notes will appear right here with 1-click Copy & Download.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let currentMarkdown = "";
+    let currentTitle = "tubescribe-notes";
+
+    async function generateNotes() {
+      const url = document.getElementById("urlInput").value.trim();
+      const maxVideos = parseInt(document.getElementById("maxVideos").value || "8");
+      const btn = document.getElementById("generateBtn");
+      const status = document.getElementById("statusMsg");
+
+      if (!url) return alert("Please enter a YouTube URL!");
+
+      btn.disabled = true;
+      btn.innerHTML = "⏳ Extracting & Generating Notes...";
+      status.classList.remove("hidden");
+      status.innerText = "Fetching transcripts & calling Gemini 3.8 Flash (playlists may take 15-30s)...";
+
+      try {
+        const res = await fetch("/api/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, max_playlist_videos: maxVideos })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Generation failed");
+
+        displayNotes(data.title, data.content, data.source_type);
+        status.innerText = `✅ ${data.message}`;
+        loadHistory();
+      } catch (err) {
+        status.innerText = `❌ Error: ${err.message}`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = "✨ Generate Notes";
+      }
+    }
+
+    function displayNotes(title, markdown, sourceType = "video") {
+      currentMarkdown = markdown;
+      currentTitle = title || "tubescribe-notes";
+      document.getElementById("actionBar").classList.remove("hidden");
+      document.getElementById("noteTitle").innerText = currentTitle;
+      document.getElementById("badgeType").innerText = sourceType.toUpperCase();
+      document.getElementById("notesOutput").innerHTML = marked.parse(markdown);
+    }
+
+    function copyMarkdown() {
+      navigator.clipboard.writeText(currentMarkdown);
+      alert("✅ Markdown copied! Paste directly into Notion, Obsidian, or Google Docs.");
+    }
+
+    function downloadMarkdown() {
+      const blob = new Blob([currentMarkdown], { type: "text/markdown" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${currentTitle.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.md`;
+      a.click();
+    }
+
+    async function loadHistory() {
+      const container = document.getElementById("historyList");
+      try {
+        const res = await fetch("/api/notes");
+        const data = await res.json();
+        if (!data.notes || data.notes.length === 0) {
+          container.innerHTML = `<p class="text-xs text-slate-500">No saved notes yet.</p>`;
+          return;
+        }
+        container.innerHTML = data.notes.map((item, idx) => `
+          <button onclick='selectHistoryItem(${JSON.stringify(item).replace(/'/g, "&#39;")})'
+            class="w-full text-left p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 transition block">
+            <div class="text-xs font-medium text-slate-200 truncate">${item.title || item.video_id}</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">${item.source_type || 'video'} • ${new Date(item.created_at).toLocaleDateString()}</div>
+          </button>
+        `).join("");
+      } catch {
+        container.innerHTML = `<p class="text-xs text-slate-500">History unavailable.</p>`;
+      }
+    }
+
+    function selectHistoryItem(item) {
+      displayNotes(item.title || item.video_id, item.content, item.source_type || "video");
+    }
+
+    loadHistory();
+  </script>
+</body>
+</html>

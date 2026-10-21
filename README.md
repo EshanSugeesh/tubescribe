@@ -20,8 +20,10 @@ TubeScribe is an end-to-end full-stack AI application that automatically transfo
        │
        ▼
 [ Built-In Web Dashboard (/app) ] (1-click Copy Markdown, Download .md, & History Sidebar)
+```
 
 ## Tech Stack
+```
 Backend Framework: FastAPI (Python)
 
 AI Engine: Google Gemini (google-genai, gemini-2.5-flash / gemini-3.8-flash)
